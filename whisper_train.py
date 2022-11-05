@@ -237,4 +237,5 @@ def main():
                 of.write(json.dumps(line) + '\n')
 
 
-main()
+if __name__ == "__main__":
+    main()
