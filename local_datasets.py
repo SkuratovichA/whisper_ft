@@ -1,25 +1,38 @@
 import os
+import json
 import torch
+import logging
 import whisper
 import torchaudio
 import numpy as np
 from collections import defaultdict
 import torchaudio.transforms as at
 
+logger = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(
+    '[%(asctime)s - %(funcName)12s() ] >>> %(message)s',
+    '%H:%M'
+))
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
 
 def load_manifests(
-    data_dir,
-    filenames={'train': ['train_0.json'], 'dev': ['dev_0.json'],'test': ['test_0.json']},
-    max_duration=20.0,
+        data_dir,
+        filenames=None,
+        max_duration=20.0,
 ):
-    print('Preparing the data')
-    import json
+    if filenames is None:
+        filenames = {'train': ['train_0.json'], 'dev': ['dev_0.json'], 'test': ['test_0.json']}
+    logger.info('Preparing the data')
     manifests = defaultdict(list)
     tot_durations = defaultdict(int)
     for split, filenames in filenames.items():
-        print(f'{split}:')
+        logger.info(f'{split}:')
+        files_info = ''
         for filename in filenames:
-            print(f'  - {filename}: ', end='')
+            files_info += f'  - {filename}: '
             filename = os.path.join(data_dir, filename)
             with open(filename) as i_f:
                 filtered_out, seconds_in_file = 0, 0
@@ -31,10 +44,14 @@ def load_manifests(
                     seconds_in_file += line['duration']
                     tot_durations[split] += line['duration']
                     manifests[split].append(line)
-                print(f'{seconds_in_file / 3600:.3f} hours. After {filtered_out / 3600:.3f} hours were filtered out.')
+                files_info += f'{seconds_in_file / 3600:.4f}\n'
+                logger.info(
+                    f'{seconds_in_file / 3600:.3f} hours. After {filtered_out / 3600:.3f} hours were filtered out.'
+                )
+        logger.info(files_info)
 
     for split, tot_duration in tot_durations.items():
-        print(f'{split}: {tot_duration / 3600:.3f} hours')
+        logger.info(f'{split}: {tot_duration / 3600:.3f} hours')
     return manifests
 
 
@@ -87,8 +104,14 @@ class WhisperDataCollatorWithPadding:
         dec_input_ids_lengths = [len(e) for e in dec_input_ids]
         max_label_len = max(label_lengths + dec_input_ids_lengths)
 
-        labels = [np.pad(lab, (0, max_label_len - lab_len), 'constant', constant_values=-100) for lab, lab_len in zip(labels, label_lengths)]
-        dec_input_ids = [np.pad(e, (0, max_label_len - e_len), 'constant', constant_values=50257) for e, e_len in zip(dec_input_ids, dec_input_ids_lengths)]
+        labels = [
+            np.pad(lab, (0, max_label_len - lab_len), 'constant', constant_values=-100)
+            for lab, lab_len in zip(labels, label_lengths)
+        ]
+        dec_input_ids = [
+            np.pad(e, (0, max_label_len - e_len), 'constant', constant_values=50257)
+            for e, e_len in zip(dec_input_ids, dec_input_ids_lengths)
+        ]
 
         batch = {
             'labels': labels,
@@ -100,4 +123,3 @@ class WhisperDataCollatorWithPadding:
         batch['audio_filepaths'] = audio_filepaths
 
         return batch
-

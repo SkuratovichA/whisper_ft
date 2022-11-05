@@ -1,37 +1,40 @@
-from local_datasets import WhisperDataCollatorWithPadding
 import torch
-from local_datasets import AlbaizynDataset
-from transformers import AdamW
-import pytorch_lightning as pl
 import whisper
 import torch.nn as nn
-from transformers import get_linear_schedule_with_warmup
+from transformers import AdamW
+from dataclasses import dataclass
+from local_datasets import AlbaizynDataset
 from pytorch_lightning import LightningModule
+from transformers import get_linear_schedule_with_warmup
+from local_datasets import WhisperDataCollatorWithPadding
 
+# make offline training possible. huggingface downloads these files by default
 from wer import WER
 from cer import CER
 
+
+@dataclass
 class Config:
-    learning_rate = 0.0001
-    weight_decay = 1e-3
-    adam_epsilon = 1e-8
-    warmup_steps = 100
-    batch_size = 48
-    num_workers = 4
-    num_train_epochs = 6
-    gradient_accumulation_steps = 4
-    sample_rate = 16000
-    dev_batch_size = 24
+    learning_rate: float
+    weight_decay: float
+    adam_epsilon: float
+    warmup_steps: int
+    batch_size: int
+    num_workers: int
+    num_train_epochs: int
+    gradient_accumulation_steps: int
+    dev_batch_size: int
 
 
 class WhisperModelModule(LightningModule):
     def __init__(
-        self,
-        cfg:Config,
-        model_name='medium',
-        lang='es',
-        train_dataset=[],
-        dev_dataset=[],
+            self,
+            *,
+            cfg: Config,
+            train_dataset,
+            dev_dataset,
+            model_name,
+            lang,
     ) -> None:
         super().__init__()
         self.options = whisper.DecodingOptions(language=lang, without_timestamps=True)
@@ -103,38 +106,37 @@ class WhisperModelModule(LightningModule):
         no_decay = ['bias', 'LayerNorm.weight']
         optimizer_grouped_parameters = [
             {'params':
-                [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+                 [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
              'weight_decay':
-                self.cfg.weight_decay
-            },
+                 self.cfg.weight_decay
+             },
             {'params':
-                [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-            'weight_decay':
-                0.0
-            }
+                 [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+             'weight_decay':
+                 0.0
+             }
         ]
-        optimizer = AdamW(
+
+        self.optimizer = AdamW(
             optimizer_grouped_parameters,
             lr=self.cfg.learning_rate,
             eps=self.cfg.adam_epsilon
         )
-        self.optimizer = optimizer
 
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
+        self.scheduler = get_linear_schedule_with_warmup(
+            self.optimizer,
             num_warmup_steps=self.cfg.warmup_steps,
             num_training_steps=self.t_total
         )
-        self.scheduler = scheduler
 
-        return [optimizer], [{'scheduler': scheduler, 'interval': 'step', 'frequency': 1}]
+        return [self.optimizer], [{'scheduler': self.scheduler, 'interval': 'step', 'frequency': 1}]
 
     def setup(self, stage=None):
         if stage == 'fit' or stage is None:
             self.t_total = (
-                (len(self.__train_dataset) // (self.cfg.batch_size))
-                // self.cfg.gradient_accumulation_steps
-                * float(self.cfg.num_train_epochs)
+                    (len(self.__train_dataset) // self.cfg.batch_size)
+                    // self.cfg.gradient_accumulation_steps
+                    * float(self.cfg.num_train_epochs)
             )
 
     def train_dataloader(self):
@@ -164,4 +166,3 @@ class WhisperModelModule(LightningModule):
             num_workers=self.cfg.num_workers,
             collate_fn=WhisperDataCollatorWithPadding()
         )
-
