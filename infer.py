@@ -84,32 +84,32 @@ def transcribe(
             return results, metrics
 
 
-def main():
-    test_manifest = load_manifests('/mnt/matylda3/xskura01/workspace/projects/asr_whisper/manifests',
-                                   filenames={'test': ['test.json']})['test']
-    model_path = 'finetuned.pt'
-    state_dict = torch.load(model_path)
-
-    cfg = Config()
-    whisper_model = WhisperModelModule(cfg)
-    whisper_model.model.load_state_dict(state_dict)
-    whisper_model.eval()
-
-    woptions = whisper.DecodingOptions(language='es', without_timestamps=True)
-    print(f'task: {woptions.task}')
-    wtokenizer = whisper.tokenizer.get_tokenizer(True, language="es", task=woptions.task)
-    dataset = AlbaizynDataset(manifest=test_manifest, tokenizer=wtokenizer)
-
-    loader = torch.utils.data.DataLoader(dataset, batch_size=8, collate_fn=WhisperDataCollatorWithPadding())
-
-    preds, metrics = transcribe(loader, whisper_model, woptions, wtokenizer)
-
-    print('\n'.join([f'{n}: mean {arr.mean():.4f} std {arr.std():.4f}' for n, arr in metrics.items()]))
-
-    with open('results.json', 'w') as of:
-        for line in preds:
-            of.write(json.dumps(line) + '\n')
-
-
-if __name__ == "__main__":
-    main()
+# def main():
+#     test_manifest = load_manifests('/mnt/matylda3/xskura01/workspace/projects/asr_whisper/manifests',
+#                                    filenames={'test': ['test.json']})['test']
+#     model_path = 'finetuned.pt'
+#     state_dict = torch.load(model_path)
+#
+#     cfg = Config()
+#     whisper_model = WhisperModelModule(cfg)
+#     whisper_model.model.load_state_dict(state_dict)
+#     whisper_model.eval()
+#
+#     woptions = whisper.DecodingOptions(language='es', without_timestamps=True)
+#     print(f'task: {woptions.task}')
+#     wtokenizer = whisper.tokenizer.get_tokenizer(True, language="es", task=woptions.task)
+#     dataset = AlbaizynDataset(manifest=test_manifest, tokenizer=wtokenizer)
+#
+#     loader = torch.utils.data.DataLoader(dataset, batch_size=8, collate_fn=WhisperDataCollatorWithPadding())
+#
+#     preds, metrics = transcribe(loader, whisper_model, woptions, wtokenizer)
+#
+#     print('\n'.join([f'{n}: mean {arr.mean():.4f} std {arr.std():.4f}' for n, arr in metrics.items()]))
+#
+#     with open('results.json', 'w') as of:
+#         for line in preds:
+#             of.write(json.dumps(line) + '\n')
+#
+#
+# if __name__ == "__main__":
+#     main()
